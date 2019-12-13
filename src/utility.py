@@ -1,0 +1,94 @@
+from os.path import getsize
+from binascii import b2a_hex, a2b_hex
+from random import choice
+
+START_BUFFER = b'EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE'
+END_BUFFER = b'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
+TAB = b'\t'
+
+
+class Utility:
+
+    def __init__(self, file_path):
+        self.carrier_file = file_path
+
+        if file_path != None:
+            self.file_type = (file_path.split('.')[-1]).upper()
+
+    def text_to_binary(self, file_path, max_size):
+        try:
+            text_file = open(file_path, 'rb')
+            hidden_file = file_path.split('.')[-1]
+        except Exception as e:
+            raise Exception('[!] Failed to open target file: {}'.format(str(e)))
+        try:
+            text = text_file.read()
+            text += TAB
+            text += START_BUFFER + TAB
+            text += str.encode(hidden_file) + TAB
+            text += END_BUFFER
+            text_file.close()
+
+            hex_text = b2a_hex(text).decode('ascii')
+
+            b = ''
+            for ch in hex_text:
+                tmp = bin(ord(ch))[2:]
+                if len(tmp) < 7:
+                    for _ in range(0, (7 - len(tmp))):
+                        tmp = '0' + tmp
+                b += tmp
+            for _ in range(0, (max_size - len(b)), 7):
+                b += str(bin(ord(choice('abcdef')))[2:])
+            return b
+        except Exception as e:
+            raise Exception('[!] Text to binary conversion failed! {}'.format(str(e)))
+
+    def set_bit(self, old_byte, new_bit):
+        b = list(bin(old_byte))
+        b[-1] = new_bit
+        return int(''.join(b), 2)
+
+    def reconstitute_from_binary(self, raw_bits,file_path):
+        try:
+
+            b = [raw_bits[i:i + 7] for i in range(0, len(raw_bits), 7)]
+            # convert to string
+            c = ''
+            for i in b:
+                c += chr(int(i, 2))
+            # if the string length is not even, add a digit
+            if len(c) % 2 != 0:
+                c += 'A'
+            # convert back to ascii
+            as_ascii = a2b_hex(c[:-10].encode('ascii'))
+            # check to see if the buffer is intact still
+            buffer_idx = as_ascii.find(START_BUFFER)
+            buffer_idx2 = as_ascii.find(END_BUFFER)
+        except Exception as e:
+            raise Exception(str(e))
+
+        if buffer_idx != -1:
+            fc = as_ascii[:buffer_idx]
+        else:
+            raise Exception('[!] Failed to find message buffer...')
+
+        if buffer_idx2 != -1:
+            payload_file_type = '.' + as_ascii[buffer_idx + 49:buffer_idx2 - 1].decode('ascii')
+        else:
+            raise Exception('[!] Unknown file type in extracted message')
+
+        if (buffer_idx != -1) and (buffer_idx2 != -1):
+            try:
+                to_save = open(file_path, 'wb')
+                to_save.write(fc)
+                to_save.close()
+                print('[+] Successfully extracted message: {}{}'.format(file_path, payload_file_type))
+            except Exception as e:
+                raise Exception('[!] Failed to write extracted file: {}'.format(str(e)))
+            finally:
+                to_save.close()
+                return file_path
+
+    def get_payload_size(self, file_path):
+        return getsize(file_path) * 8
